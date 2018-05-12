@@ -5,7 +5,7 @@ import sys
 import numpy as np
 
 # frames per second
-fps = 200
+fps = 30
 # global variables for the whole pygame
 width = 800
 height = 600
@@ -13,6 +13,7 @@ LineThickness = 10
 PaddleSize = 200
 PaddleOffset = 20  # how far the paddle is from the arena
 
+PaddleSpeed = 5
 BallSpeed = 5
 
 # colors
@@ -21,6 +22,7 @@ white = (255, 255, 255)
 
 pygame.font.init()
 DisplaySurf = pygame.display.set_mode((width, height))
+clock = pygame.time.Clock()
 pygame.display.set_caption('Pong')
 
 
@@ -62,13 +64,7 @@ def DrawPaddle1(PlayerOnePosition):
     """
     paddle = pygame.Rect(LineThickness + PaddleOffset, PlayerOnePosition,
                          LineThickness, PaddleSize)
-    # lower bound
-    if paddle.bottom > height - LineThickness:
-        paddle.bottom = height - LineThickness
-    # upper bound
-    if paddle.top < LineThickness:
-        paddle.top = LineThickness
-    # draw paddle
+
     pygame.draw.rect(DisplaySurf, white, paddle)
 
 
@@ -78,13 +74,7 @@ def DrawPaddle2(PlayerTwoPosition):
     """
     paddle = pygame.Rect(width - 2*LineThickness - PaddleOffset,
                          PlayerTwoPosition, LineThickness, PaddleSize)
-    # lower bound
-    if paddle.bottom > height - LineThickness:
-        paddle.bottom = height - LineThickness
-    # upper bound
-    if paddle.top < LineThickness:
-        paddle.top = LineThickness
-    # draw paddle
+
     pygame.draw.rect(DisplaySurf, white, paddle)
 
 
@@ -111,15 +101,15 @@ def Updateball(ball_x, ball_y, BallDirX, BallDirY, PlayerOnePosition,
     if BallDirX == -1:
         # left hand side
         if (PaddleOffset + 2 * LineThickness == ball_x and
-            ball_y >= PlayerOnePosition and
-                PlayerOnePosition + PaddleSize >= ball_y + LineThickness):
+            ball_y + LineThickness >= PlayerOnePosition and
+                PlayerOnePosition + PaddleSize >= ball_y):
             BallDirX = BallDirX * -1
             score = +1
     elif BallDirX == 1:
         # right hand side
         if (width - PaddleOffset - 2*LineThickness == ball_x and
-            ball_y >= PlayerTwoPosition and
-                PlayerTwoPosition + PaddleSize >= ball_y + LineThickness):
+            ball_y + LineThickness >= PlayerTwoPosition and
+                PlayerTwoPosition + PaddleSize >= ball_y):
             BallDirX = BallDirX * -1
 
     if ball_x <= LineThickness:
@@ -130,33 +120,44 @@ def Updateball(ball_x, ball_y, BallDirX, BallDirY, PlayerOnePosition,
         score = +1
         BallDirX = BallDirX * -1
 
-    return [ball_x, ball_y, BallDirX, BallDirY, score]
+    return [ball_x, ball_y, BallDirX, BallDirY, PlayerOnePosition, PlayerTwoPosition, score]
 
 
 def UpdatePaddle1(action, PlayerOnePosition):
 
     if action == 2:
-        PlayerOnePosition += BallSpeed
+        PlayerOnePosition += PaddleSpeed
 
     elif action == 0:
-        PlayerOnePosition -= BallSpeed
+        PlayerOnePosition -= PaddleSpeed
+
+    elif not (action in [0, 1, 2]):
+        raise ValueError('No such action!')
+
+    # lower bound
+    if PlayerOnePosition + PaddleSize > height - LineThickness:
+        PlayerOnePosition = height - LineThickness - PaddleSize
+    # upper bound
+    if PlayerOnePosition < LineThickness:
+        PlayerOnePosition = LineThickness
 
     return PlayerOnePosition
 
 
 def UpdatePaddle2(PlayerTwoPosition, BallDirX, ball_y):
 
-    if BallDirX == -1:
-        if PlayerTwoPosition + PaddleSize / 2 < height / 2:
-            PlayerTwoPosition += BallSpeed
-        elif PlayerTwoPosition + PaddleSize / 2 > height / 2:
-            PlayerTwoPosition -= BallSpeed
 
-    elif BallDirX == 1:
-        if PlayerTwoPosition + PaddleSize / 2 < ball_y + LineThickness / 2:
-            PlayerTwoPosition += BallSpeed
-        elif PlayerTwoPosition + PaddleSize / 2 > ball_y + LineThickness / 2:
-            PlayerTwoPosition -= BallSpeed
+    # if BallDirX == 1:
+    if PlayerTwoPosition + PaddleSize / 2 < ball_y + LineThickness / 2:
+        PlayerTwoPosition += BallSpeed
+    elif PlayerTwoPosition + PaddleSize / 2 > ball_y + LineThickness / 2:
+        PlayerTwoPosition -= BallSpeed
+
+    if PlayerTwoPosition + PaddleSize > height - LineThickness:
+        PlayerTwoPosition = height - LineThickness - PaddleSize
+    # upper bound
+    if PlayerTwoPosition < LineThickness:
+        PlayerTwoPosition = LineThickness
 
     return PlayerTwoPosition
 
@@ -193,6 +194,7 @@ class Pong():
         DisplayScore(self.total_score)
 
         pygame.display.flip()
+        clock.tick(fps)
         if self.mode == 'high_dims':
             return image_data
         elif self.mode == 'low_dims':
@@ -202,6 +204,7 @@ class Pong():
 
     def GetNextFrame(self, action, normalize=False):
         pygame.event.pump()
+        DrawArena()
         score = 0
 
         self.PlayerOnePosition = UpdatePaddle1(action, self.PlayerOnePosition)
@@ -212,7 +215,7 @@ class Pong():
         DrawPaddle2(self.PlayerTwoPosition)
 
         [self.ball_x, self.ball_y, self.BallDirX,
-            self.BallDirY, score] = Updateball(self.ball_x, self.ball_y,
+            self.BallDirY, self.PlayerOnePosition, self.PlayerTwoPosition, score] = Updateball(self.ball_x, self.ball_y,
                                                     self.BallDirX,
                                                     self.BallDirY,
                                                     self.PlayerOnePosition,
@@ -230,6 +233,7 @@ class Pong():
                             self.BallDirX, self.BallDirY,
                             self.PlayerOnePosition/height]
         pygame.display.flip()
+        clock.tick(fps)
         if self.mode == 'high_dims':
             return score, image_data
         elif self.mode == 'low_dims':
@@ -238,17 +242,18 @@ class Pong():
 
 def main():
     pong = Pong()
-
+    state_1 = pong.GetPresentFrame()
     while True:
         for event in pygame.event.get():
             if event.type == QUIT:
                 pygame.quit()
                 sys.exit()
 
-        state_1 = pong.GetPresentFrame()
-        action = np.random.randint(2)
-        score, state_2 = pong.GetNextFrame(action)
 
+        action = np.random.randint(3)
+        score, state_2 = pong.GetNextFrame(action)
+        print(pong.PlayerOnePosition)
+        state_1 = state_2
 
 if __name__ == '__main__':
     main()
