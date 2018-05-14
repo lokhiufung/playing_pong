@@ -1,13 +1,14 @@
 import pygame
 from pygame.locals import *
 import sys
+import cv2
 
 import numpy as np
 
 # frames per second
 fps = 30
 # global variables for the whole pygame
-width = 800
+width = 600
 height = 600
 LineThickness = 10
 PaddleSize = 200
@@ -241,19 +242,34 @@ class Pong():
 
 
 def main():
-    pong = Pong()
-    state_1 = pong.GetPresentFrame()
+
+    input_dims = [84, 84, 1]
+    pong = Pong(mode='high_dims')
+    frame = pong.GetPresentFrame()
+    frame = cv2.cvtColor(cv2.resize(frame, (input_dims[0], input_dims[1])), cv2.COLOR_BGR2GRAY)
+    ret, frame = cv2.threshold(frame, 1, 255, cv2.THRESH_BINARY)
+    # stack frames, that is our input tensor
+    state_1 = np.stack((frame, frame, frame, frame), axis=2)
+    state_1 = state_1.reshape((1, input_dims[0], input_dims[1], 4))
+
+    print(state_1.shape)
     while True:
         for event in pygame.event.get():
             if event.type == QUIT:
                 pygame.quit()
                 sys.exit()
 
-
         action = np.random.randint(3)
-        score, state_2 = pong.GetNextFrame(action)
-        print(pong.PlayerOnePosition)
+        score, frame = pong.GetNextFrame(action)
+
+        frame = cv2.cvtColor(cv2.resize(frame, (input_dims[0], input_dims[1])), cv2.COLOR_BGR2GRAY)
+        ret, frame = cv2.threshold(frame, 1, 255, cv2.THRESH_BINARY)
+        frame = np.reshape(frame, (1, input_dims[0], input_dims[1], 1))
+        state_2 = np.append(frame, state_1[:, :, :, 0:3], axis=3)
+
+        print(state_2.shape)
         state_1 = state_2
+
 
 if __name__ == '__main__':
     main()
